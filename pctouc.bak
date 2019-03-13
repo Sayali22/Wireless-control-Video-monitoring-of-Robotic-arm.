@@ -1,0 +1,500 @@
+	 #include<regx51.h>
+	 #include<stdio.h>
+	 void send(unsigned char ch);
+	 unsigned char recv();
+	 unsigned char conv(unsigned char channel);
+	 void delay(unsigned int v);
+
+	 unsigned char recv1();
+	 void out(unsigned char m_no,unsigned char val);
+	 void out1(unsigned char m_no,unsigned char val);
+	 unsigned char mot[8][3]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	 unsigned char dcmot[8][2]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+	 void main()
+	 {
+		unsigned char mode[3][8]={~0x01,~0x02,~0x04,~0x08,~0x01,~0x02,~0x04,~0x08,~0x03,~0x06,~0x0c,~0x09,~0x03,~0x06,~0x0c,~0x09,~0x01,~0x03,~0x02,~0x06,~0x0c,~0x08,~0x09,~0x01};
+		unsigned char speed[8]={0,0,0,0,0,0,0,0};
+		unsigned char seq_no[8]={0,0,0,0,0,0,0,0};
+		unsigned char cdcmot[8][2]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+		unsigned char j;
+		IE=0x90;  // Enable Interrupt 
+	 	TMOD=0x20; // setting start
+		TH1=0xFD;
+		SCON=0x50;
+		TR1=1;
+		TI=0;
+		RI=0;	  // setting end
+		while(1)
+		{
+			for(j=0;j<255;j++);
+			delay(100);
+			for(j=0;j<8;j++)
+			{
+				if(mot[j][2]>0)
+				{
+					speed[j]++;
+				 	if(speed[j]==mot[j][2])
+					{
+						speed[j]=0;
+						out(j,mode[mot[j][1]][seq_no[j]]);
+						if(mot[j][0]==0)
+							seq_no[j]++;
+						else
+							seq_no[j]--;
+						if(seq_no[j]==8 )
+							seq_no[j]=0;
+						if(seq_no[j]==-1)
+							seq_no[j]=7;
+					}
+				}
+				
+				if(dcmot[j][0]>0 && dcmot[j][1]==0)
+					out1(j,1);
+				else if(dcmot[j][0]==0 && dcmot[j][1]>0)
+					out1(j,0);
+				else if(dcmot[j][0]>0 && dcmot[j][1]>0)
+				{
+					if(cdcmot[j][0] != dcmot[j][0])
+					{
+						out1(j,1);
+						cdcmot[j][0] = dcmot[j][0];
+						cdcmot[j][1] = dcmot[j][1];
+				
+					}
+						 
+
+				}
+
+
+
+				/*
+					cdcmot[j][0]++;
+					if(cdcmot[j][1]==0)
+					{
+						if(cdcmot[j][0]==dcmot[j][0])
+						{
+							out1(j,0);
+							cdcmot[j][0]=0;
+							cdcmot[j][1]=1;
+						}
+					}
+					else
+					{
+						if(cdcmot[j][0]==dcmot[j][1])
+						{
+							out1(j,1);
+							cdcmot[j][0]=0;
+							cdcmot[j][1]=0;
+						}
+					}*/
+			}
+		}
+	 }
+	unsigned char conv(unsigned char channel)
+	{
+		unsigned char ch;
+		int t=0;
+		P2=0xff;
+		P2=0;
+
+		P2=P2&241;
+		if(channel==1)
+			channel=4;
+		else if(channel==3)
+			channel=6;
+		else if(channel==4)
+			channel=1;
+		else if(channel==6)
+			channel=3;
+
+		channel=channel*2;
+		P2=P2|channel;
+		P2_6=0;		 // oe 
+		P2_0=1;		 //ale
+		P2_0=0;
+		P2_4=1;		 // start of count
+		P2_4=0;
+		P2_5=1;		 // eoc
+		while(P2_5==0)
+		{
+			t++;
+			if(t==5000)
+				break;
+			P2_7=~P2_7;	   //clk
+		}
+		P2_6=1;	  //oe
+		ch=0;
+		if(P0_0==1)
+			ch=ch+128;
+		if(P0_1==1)
+			ch=ch+64;
+		if(P0_2==1)
+			ch=ch+32;
+		if(P0_3==1)
+			ch=ch+16;
+		if(P0_4==1)
+			ch=ch+8;
+		if(P0_5==1)
+			ch=ch+4;
+		if(P0_6==1)
+			ch=ch+2;
+		if(P0_7==1)
+			ch=ch+1;
+		P2_5=1;
+		return ch;
+	}
+	 void send(unsigned char ch)
+	 {
+	 	SBUF=ch;
+	 }
+	 unsigned char recv()
+	 {
+		unsigned char rec;	 	
+
+		rec=SBUF;
+		RI=0;
+		return rec;
+	 }
+	 unsigned char recv1()
+	 {
+		unsigned char rec;
+	 	IE=0x80;	// all int disabled
+	 	while(RI==0);
+		rec=SBUF;
+		RI=0;
+		IE=0x90;					   // enable int
+		return rec;
+	 }
+
+	 void serial (void) interrupt 4
+	 {
+		unsigned char cmd,temp;
+		if(TI==1)
+			TI=0;
+		else
+		{	
+			cmd=recv();
+			if(cmd>=1 && cmd<=75)
+			{
+				switch(cmd)
+				{
+					case 1:
+						P0_0=recv1()&1;
+						break;
+				    case  2:
+						P0_1=recv1()&1;
+						break;
+				    case  3:
+						P0_2=recv1()&1;
+						break;
+				    case  4:
+						P0_3=recv1()&1;
+						break;
+				    case  5:
+						P0_4=recv1()&1;
+						break;
+				    case  6:
+						P0_5=recv1()&1;
+						break;
+				    case  7:
+						P0_6=recv1()&1;
+						break;
+				    case  8:
+						P0_7=recv1()&1;
+						break;
+				    case  9:
+						P1_0=recv1()&1;
+						break;
+				    case  10:
+						P1_1=recv1()&1;
+						break;
+				    case  11:
+						P1_2=recv1()&1;
+						break;
+				    case  12:
+						P1_3=recv1()&1;
+						break;
+				    case  13:
+						P1_4=recv1()&1;
+						break;
+				    case  14:
+						P1_5=recv1()&1;
+						break;
+				    case  15:
+						P1_6=recv1()&1;
+						break;
+				    case  16:
+						P1_7=recv1()&1;
+						break;
+				    case  17:
+						P2_0=recv1()&1;
+						break;
+				    case  18:
+						P2_1=recv1()&1;
+						break;
+				    case  19:
+						P2_2=recv1()&1;
+						break;
+				    case  20:
+						P2_3=recv1()&1;
+						break;
+				    case  21:
+						P2_4=recv1()&1;
+						break;
+				    case  22:
+						P2_5=recv1()&1;
+						break;
+				    case  23:
+						P2_6=recv1()&1;
+						break;
+				    case  24:
+						P2_7=recv1()&1;
+						break;
+				    case  25:
+						P3_0=recv1()&1;
+						break;
+				    case  26:
+						P3_1=recv1()&1;
+						break;
+				    case  27:
+						P3_2=recv1()&1;
+						break;
+				    case  28:
+						P3_3=recv1()&1;
+						break;
+				    case  29:
+						P3_4=recv1()&1;
+						break;
+				    case  30:
+						P3_5=recv1()&1;
+						break;
+				    case  31:
+						P3_6=recv1()&1;
+						break;
+				    case  32:
+						P3_7=recv1()&1;
+						break;
+				    case  33:
+						P0=recv1();
+						break;
+				    case  34:
+						P1=recv1();
+						break;
+				    case  35:
+						P2=recv1();
+						break;
+				    case  36:
+						P3=recv1();
+						break;
+					case 37:
+						send(P0_0);
+						break;
+					case 38:
+						send(P0_1);
+						break;
+				    case 39:
+						send(P0_2);
+						break;
+				    case 40:
+						send(P0_3);
+						break;
+				    case 41:
+						send(P0_4);
+						break;
+				    case 42:
+						send(P0_5);
+						break;
+				    case 43:
+						send(P0_6);
+						break;
+				    case 44:
+						send(P0_7);
+						break;
+				    case 45:
+						send(P1_0);
+						break;
+				    case 46:
+						send(P1_1);
+						break;
+				    case 47:
+						send(P1_2);
+						break;
+				    case 48:
+						send(P1_3);
+						break;
+				    case 49:
+						send(P1_4);
+						break;
+				    case 50:
+						send(P1_5);
+						break;
+				    case 51:
+						send(P1_6);
+						break;
+				    case 52:
+						send(P1_7);
+						break;
+				    case 53:
+						send(P2_0);
+						break;
+				    case 54:
+						send(P2_1);
+						break;
+				    case 55:
+						send(P2_2);
+						break;
+				    case 56:
+						send(P2_3);
+						break;
+				    case 57:
+						send(P2_4);
+						break;
+				    case 58:
+						send(P2_5);
+						break;
+				    case 59:
+						send(P2_6);
+						break;
+				    case 60:
+						send(P2_7);
+						break;
+				    case 61:
+						send(P3_0);
+						break;
+				    case 62:
+						send(P3_1);
+						break;
+				    case 63:
+						send(P3_2);
+						break;
+				    case 64:
+						send(P3_3);
+						break;
+				    case 65:
+						send(P3_4);
+						break;
+				    case 66:
+						send(P3_5);
+						break;
+				    case 67:
+						send(P3_6);
+						break;
+				    case 68:
+						send(P3_7);
+						break;
+				    case 69:
+						send(P0);
+						break;
+				    case 70:
+						send(P1);
+						break;
+				    case 71:
+						send(P2);
+						break;
+				    case 72:
+						send(P3);	
+						break;
+				    case 73:
+						temp=recv1();
+						send(conv(temp));
+						break;
+					case 74:
+						temp=recv1();
+						mot[temp][0]=recv1();
+						mot[temp][1]=recv1();
+						mot[temp][2]=recv1();
+						break;
+					case 75:
+						temp=recv1();
+						dcmot[temp][0]=recv1();
+						dcmot[temp][1]=recv1();
+						break;
+				}
+			}
+		}
+	 }
+	 void out(unsigned char m_no,unsigned char val)
+	 {
+	 	if(m_no==0)
+		{
+			P0_0=val & 1;
+			P0_1=(val & 2)>>1;
+			P0_2=(val & 4)>>2;
+			P0_3=(val & 8)>>3;
+		}
+	 	else if(m_no==1)
+		{
+			P0_4=val & 1;
+			P0_5=(val & 2)>>1;
+			P0_6=(val & 4)>>2;
+			P0_7=(val & 8)>>3;
+		}
+	 	else if(m_no==2)
+		{
+			P1_0=val & 1;
+			P1_1=(val & 2)>>1;
+			P1_2=(val & 4)>>2;
+			P1_3=(val & 8)>>3;
+		}
+	 	else if(m_no==3)
+		{
+			P1_4=val & 1;
+			P1_5=(val & 2)>>1;
+			P1_6=(val & 4)>>2;
+			P1_7=(val & 8)>>3;
+		}
+	 	else if(m_no==4)
+		{
+			P2_0=val & 1;
+			P2_1=(val & 2)>>1;
+			P2_2=(val & 4)>>2;
+			P2_3=(val & 8)>>3;
+		}
+	 	else if(m_no==5)
+		{
+			P2_4=val & 1;
+			P2_5=(val & 2)>>1;
+			P2_6=(val & 4)>>2;
+			P2_7=(val & 8)>>3;
+		}
+	 	else if(m_no==6)
+		{
+			P3_0=val & 1;
+			P3_1=(val & 2)>>1;
+			P3_2=(val & 4)>>2;
+			P3_3=(val & 8)>>3;
+		}
+	 	else if(m_no==7)
+		{
+			P3_4=val & 1;
+			P3_5=(val & 2)>>1;
+			P3_6=(val & 4)>>2;
+			P3_7=(val & 8)>>3;
+		}
+	 }
+	 void out1(unsigned char m_no,unsigned char val)
+	 {
+	 	if(m_no==0)
+			P1_0=val;
+		else if(m_no==1)
+			P1_1=val;
+		else if(m_no==2)
+			P1_2=val;
+		else if(m_no==3)
+			P1_3=val;
+		else if(m_no==4)
+			P1_4=val;
+		else if(m_no==5)
+			P1_5=val;
+		else if(m_no==6)
+			P1_6=val;
+		else 
+			P1_7=val;
+	 }
+	 void delay(unsigned int v)
+{
+	unsigned int i;
+	for(i=0;i<v;i++);
+		
+}  
+
